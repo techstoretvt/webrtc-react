@@ -1,76 +1,72 @@
 // src/App.js
+import Peer from "peerjs";
 import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 
-const socket = io("http://localhost:5000");
+// const socket = io("http://localhost:5000");
+
+const peer = new Peer();
 
 const App = () => {
+  const [yourId, setYourId] = useState("");
+  const [remoteId, setRemoteId] = useState("");
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  let localStream, remoteStream;
-  let peerConnection;
 
   useEffect(() => {
-    const callUser = async () => {
-      try {
-        // Lấy truy cập vào camera và microphone của người dùng
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
+    peer.on("open", (id) => {
+      setYourId(id);
+    });
+
+    peer.on("call", (call) => {
+      openStream().then((stream) => {
+        call.answer(stream);
+        playStream(localVideoRef.current, stream);
+        call.on("stream", (remoteStream) => {
+          playStream(remoteVideoRef.current, remoteStream);
         });
-
-        // Hiển thị video từ camera người dùng
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStream;
-        }
-
-        // Tạo kết nối peer-to-peer
-        peerConnection = new RTCPeerConnection();
-
-        // Thêm stream của người dùng vào kết nối peer-to-peer
-        localStream
-          .getTracks()
-          .forEach((track) => peerConnection.addTrack(track, localStream));
-
-        // Xử lý sự kiện nhận được stream từ người dùng khác
-        peerConnection.ontrack = (event) => {
-          remoteStream = event.streams[0];
-          // Hiển thị video từ người dùng khác
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-          }
-        };
-
-        // Xử lý ICE candidate và gửi cho server
-        peerConnection.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit("candidate", event.candidate);
-          }
-        };
-
-        // Tạo SDP offer và gửi cho server
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        socket.emit("offer", offer);
-      } catch (error) {
-        console.error("Error accessing media devices:", error);
-      }
-    };
-
-    // Gọi video tự động khi vào trang
-    callUser();
+      });
+    });
   }, []);
+
+  const openStream = () => {
+    const config = {
+      audio: false,
+      video: true,
+    };
+    return navigator.mediaDevices.getUserMedia(config);
+  };
+
+  const playStream = (video, stream) => {
+    video.srcObject = stream;
+  };
+
+  const onClickBtnCall = () => {
+    openStream().then((stream) => {
+      playStream(localVideoRef.current, stream);
+      const call = peer.call(remoteId, stream);
+      call.on("stream", (remoteStream) => {
+        playStream(remoteVideoRef.current, remoteStream);
+      });
+    });
+  };
 
   return (
     <div>
+      <h3>
+        Your ID: <p>{yourId}</p>
+      </h3>
       <div>
         <h2>Local Video</h2>
-        <video ref={localVideoRef} autoPlay playsInline muted />
+        <video ref={localVideoRef} autoPlay playsInline muted width={300} />
       </div>
       <div>
         <h2>Remote Video</h2>
-        <video ref={remoteVideoRef} autoPlay playsInline />
+        <video ref={remoteVideoRef} autoPlay playsInline width={300} />
       </div>
+      <input value={remoteId} onChange={(e) => setRemoteId(e.target.value)} />
+      <button onClick={onClickBtnCall}>Call</button>
     </div>
   );
 };
