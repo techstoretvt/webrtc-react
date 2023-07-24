@@ -19,7 +19,7 @@ const App = () => {
 
   useEffect(() => {
     socket.on("connect", () => {
-      console.log(socket.id);
+      console.log("user connect: ", socket.id);
     });
 
     socket.on("DANH_SACH_ONLINE", (arrUserInfo) => {
